@@ -22,6 +22,8 @@ df_steam_games = function_df('./Datasets/clean_steam_games.json')
 df_user_reviews = function_df('./Datasets/clean_user_reviews.json')
 df_user_items = function_df('./Datasets/clean_user_items.json')
 
+df_steam_games = df_steam_games.rename(columns={'id': 'item_id'})
+
 # Convierte la columna 'release_date' a tipo datetime
 df_steam_games['release_date'] = pd.to_datetime(df_steam_games['release_date'], errors='coerce')
 
@@ -144,8 +146,35 @@ async def UserForGenre( genero : str ):
     {"Usuario con más horas jugadas para Género X" : nombre de usuario, "Horas jugadas":[{Año: x1, Horas: n}, {Año: x2, Horas: n2}, {Año: x3, Horas: n3}]}
 
     '''
-    
-    return
+    genero.lower()
+    df_steam_games['genres'] = df_steam_games['genres'].astype(str).str.lower()
+
+    # Filtrar el DataFrame df_steam_games por el género dado
+    df_filtered = df_steam_games[df_steam_games['genres'].str.contains(genero, na=False)].copy()
+        
+    # Extraer el año de lanzamiento
+    df_filtered['release_year'] = df_filtered['release_date'].dt.year
+        
+    # Combinar los DataFrames utilizando 'item_id'
+    df_combined = pd.merge(df_user_items, df_filtered, on='item_id', how='inner')
+        
+    # Obtener el usuario con más horas jugadas para el género dado
+    usuario_max_horas = df_combined.groupby('user_id')['playtime_forever'].sum().idxmax()
+        
+    # Obtener las horas jugadas por el usuario con más horas jugadas\n",
+    horas_usuario_max = df_combined[df_combined['user_id'] == usuario_max_horas]['playtime_forever'].sum()
+        
+    #renombrar columnas
+    df_combined = df_combined.rename(columns={'release_year': 'Año', 'playtime_forever': 'Horas Jugadas'})
+        
+    # Agrupar por año de lanzamiento y sumar las horas jugadas\n",
+    horas_por_año = df_combined.groupby('Año')['Horas Jugadas'].sum().reset_index()
+        
+    return {
+        "Usuario con más horas jugadas para " + genero: usuario_max_horas,
+        "Horas jugadas": horas_por_año.to_dict(orient='records'),
+        "Horas totales jugadas por el usuario": horas_usuario_max
+    }
 
 
 @app.get("/D")
@@ -162,8 +191,34 @@ async def best_developer_year( año : int ):
     [{"Puesto x1" : X}, {"Puesto x2" : Y},{"Puesto x3" : Z}]
 
     '''
+    # Unir los DataFrames en función de la columna 'item_id'
+    df_completo = pd.merge(df_steam_games, df_user_reviews, on='item_id', how='inner')
+
+    # Filtrar los juegos por el año especificado
+    juegos_del_año = df_completo[df_completo['release_date'].dt.year == año]
+
+    # Filtrar los juegos recomendados y los comentarios positivos
+    juegos_recomendados = juegos_del_año[juegos_del_año['recommend'] == True]
+    comentarios_positivos = juegos_del_año[juegos_del_año['sentiment_analysis'] == 2]
+
+    # Calcular la suma de recomendaciones y comentarios positivos por desarrollador
+    recomendaciones_por_desarrollador = juegos_recomendados.groupby('developer').size()
+    comentarios_por_desarrollador = comentarios_positivos.groupby('developer').size()
+
+    # Calcular la puntuación total por desarrollador sumando recomendaciones y comentarios positivos
+    puntuacion_por_desarrollador = recomendaciones_por_desarrollador.add(comentarios_por_desarrollador, fill_value=0)
+
+    # Seleccionar los tres primeros desarrolladores con la puntuación más alta
+    top_3_desarrolladores = puntuacion_por_desarrollador.nlargest(3)
+
+    # Crear la lista de retorno en el formato especificado
+    retorno = [{"Puesto {}: {}".format(i+1, desarrollador): puntuacion} for i, (desarrollador, puntuacion) in enumerate(top_3_desarrolladores.items())]
+
+    if top_3_desarrolladores.empty:
+        print(f"No hay registros para el año {año}.")
+        return None
     
-    return
+    return retorno
 
 
 @app.get("/E")
@@ -180,5 +235,27 @@ async def developer_reviews_analysis( desarrolladora : str ):
     {'desarrollador x' : [Negative = x1, Positive = x2]}
 
     '''
-    
-    return
+    desarrolladora.lower()
+    df_steam_games['developer'] = df_steam_games['developer'].astype(str).str.lower()
+
+    # Fusionar los DataFrames por item_id
+    merged_df = pd.merge(df_steam_games, df_user_reviews, how='inner', on='item_id')
+
+    # Filtrar por el desarrollador buscado
+    desarrolladora_df = merged_df[merged_df['developer'].str.contains(desarrolladora, case=False)]
+
+    if desarrolladora_df.empty:
+        print(f"No hay registros para el desarrollador {desarrolladora}.")
+        return None
+
+    #contar la cantidad de reseñas
+    for developer in desarrolladora_df.groupby('developer'):
+        cantidad_positivas = (desarrolladora_df['sentiment_analysis'] == 2).sum()
+        cantidad_negativas = (desarrolladora_df['sentiment_analysis'] == 0).sum()
+
+        resultado = {
+            'positivas': cantidad_positivas,
+            'negativas': cantidad_negativas
+        }
+
+    return {desarrolladora: [f"{key} = {value}" for key, value in resultado.items()]}
