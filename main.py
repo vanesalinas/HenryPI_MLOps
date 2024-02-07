@@ -1,6 +1,6 @@
 #importar las librerias
-from fastapi import FastAPI 
-import pandas as pd 
+from fastapi import FastAPI  
+import pandas as pd  
 import gzip
 
 ''' 
@@ -16,7 +16,7 @@ def function_df(ruta):
     # Descomprimir el archivo JSON usando gzip y cargar los datos en un DataFrame
     with gzip.open(ruta, "rb") as archivo_comprimido:
     # Cargar los datos JSON
-    df = pd.read_json(archivo_comprimido, lines=True)
+        df = pd.read_json(archivo_comprimido, lines=True)
     return df
 
 df_steam_games = function_df('./Datasets/clean_steam_games.json.gz')
@@ -147,6 +147,9 @@ async def UserForGenre( genero : str ):
     '''
     genero.lower()
     df_steam_games['genres'] = df_steam_games['genres'].astype(str).str.lower()
+
+    # Convierte la columna 'release_date' a tipo datetime
+    df_steam_games['release_date'] = pd.to_datetime(df_steam_games['release_date'], errors='coerce')
 
     # Filtrar el DataFrame df_steam_games por el género dado
     df_filtered = df_steam_games[df_steam_games['genres'].str.contains(genero, na=False)].copy()
