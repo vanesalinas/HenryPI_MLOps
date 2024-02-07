@@ -1,6 +1,7 @@
 #importar las librerias
 from fastapi import FastAPI 
 import pandas as pd 
+import gzip
 
 ''' 
 Instanciamos la clase
@@ -12,17 +13,15 @@ app = FastAPI()
 Cargamos los datos con los que se trabajaran
 '''
 def function_df(ruta):
-    try:
-        df = pd.read_json(ruta, lines=True)
-    except ValueError as e:
-        return print(f"Error al leer el archivo JSON: {e}")
+    # Descomprimir el archivo JSON usando gzip y cargar los datos en un DataFrame
+    with gzip.open(ruta, "rb") as archivo_comprimido:
+    # Cargar los datos JSON
+    df = pd.read_json(archivo_comprimido, lines=True)
     return df
 
-df_steam_games = function_df('./Datasets/clean_steam_games.json')
-df_user_reviews = function_df('./Datasets/clean_user_reviews.json')
-df_user_items = function_df('./Datasets/clean_user_items.json')
-
-df_steam_games = df_steam_games.rename(columns={'id': 'item_id'})
+df_steam_games = function_df('./Datasets/clean_steam_games.json.gz')
+df_user_reviews = function_df('./Datasets/clean_user_reviews.json.gz')
+df_user_items = function_df('./Datasets/clean_user_items.json.gz')
 
 # Convierte la columna 'release_date' a tipo datetime
 df_steam_games['release_date'] = pd.to_datetime(df_steam_games['release_date'], errors='coerce')
@@ -191,6 +190,9 @@ async def best_developer_year( año : int ):
     [{"Puesto x1" : X}, {"Puesto x2" : Y},{"Puesto x3" : Z}]
 
     '''
+    # Convierte la columna 'release_date' a tipo datetime
+    df_steam_games['release_date'] = pd.to_datetime(df_steam_games['release_date'], errors='coerce')
+
     # Unir los DataFrames en función de la columna 'item_id'
     df_completo = pd.merge(df_steam_games, df_user_reviews, on='item_id', how='inner')
 
